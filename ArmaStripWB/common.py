@@ -59,7 +59,7 @@ def unit(v):
     return v.multiply(1.0 / ln)
 
 
-def make_hex_prism_xy(center, R, depth, z_extra):
+def make_hex_prism_xy(center, R, height):
     """Hex pocket cutter placed in XY, extruded +Z."""
     pts = []
     for k in range(6):
@@ -74,7 +74,7 @@ def make_hex_prism_xy(center, R, depth, z_extra):
     pts.append(pts[0])
     wire = Part.makePolygon(pts)
     face = Part.Face(wire)
-    return face.extrude(App.Vector(0, 0, depth + z_extra))
+    return face.extrude(App.Vector(0, 0, height))
 
 
 def _teardrop_points_2d(r, steps):

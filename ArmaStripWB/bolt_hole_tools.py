@@ -55,6 +55,9 @@ def cut_bolt_holes_from_selection(
                 )
             )
 
+    if not cutters:
+        raise Exception("Failed to build bolt hole cutters.")
+
     cutters_compound = Part.makeCompound(cutters)
 
     doc = App.ActiveDocument
@@ -101,7 +104,20 @@ class BoltHoleTaskPanel:
         self.shape.setCurrentIndex(0)
 
         self.up = QtWidgets.QComboBox()
-        self.up.addItems(["+Z (print up)", "-Z"])
+        self.up.addItems(
+            [
+                "+Z (print up)",
+                "-Z",
+                "+X",
+                "-X",
+                "+Y",
+                "-Y",
+                "+X+Y",
+                "+X-Y",
+                "-X+Y",
+                "-X-Y",
+            ]
+        )
         self.up.setCurrentIndex(0)
 
         self.steps = QtWidgets.QSpinBox()
@@ -127,7 +143,20 @@ class BoltHoleTaskPanel:
 
     def accept(self):
         hole_shape = "teardrop" if self.shape.currentIndex() == 0 else "round"
-        print_up = App.Vector(0, 0, 1) if self.up.currentIndex() == 0 else App.Vector(0, 0, -1)
+        up_idx = self.up.currentIndex()
+        up_map = {
+            0: App.Vector(0, 0, 1),
+            1: App.Vector(0, 0, -1),
+            2: App.Vector(1, 0, 0),
+            3: App.Vector(-1, 0, 0),
+            4: App.Vector(0, 1, 0),
+            5: App.Vector(0, -1, 0),
+            6: App.Vector(1, 1, 0),
+            7: App.Vector(1, -1, 0),
+            8: App.Vector(-1, 1, 0),
+            9: App.Vector(-1, -1, 0),
+        }
+        print_up = up_map.get(up_idx, App.Vector(0, 0, 1))
         cut_bolt_holes_from_selection(
             bolt_d_nominal=self.bolt_d.value(),
             bolt_clearance=self.clear.value(),

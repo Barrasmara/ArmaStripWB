@@ -22,7 +22,7 @@ def cut_nut_pockets_from_selection(
     pocket_depth=2.5,
     pocket_side="top",  # "top" or "bottom"
     preview_cutters=False,
-    Z_EXTRA=1.0,
+    pocket_offset=0.0,
     CENTER_TOL=0.1,
 ):
     part_obj, strip_obj = get_selection_part_and_strip()
@@ -38,20 +38,22 @@ def cut_nut_pockets_from_selection(
     centers = find_hole_centers_from_strip(strip_shape, center_tol=float(CENTER_TOL))
 
     cutters = []
+    depth_val = float(pocket_depth)
+    offset_val = float(pocket_offset)
+
     for ctr in centers:
         x, y = ctr.x, ctr.y
 
         if pocket_side == "top":
-            base_z = top_z - float(pocket_depth)
+            base_z = top_z - depth_val - offset_val
         else:
-            base_z = bot_z - float(Z_EXTRA)
+            base_z = bot_z - offset_val
 
         pocket_center = App.Vector(x, y, base_z)
-        cutters.append(
-            make_hex_prism_xy(
-                pocket_center, nut_R, float(pocket_depth), float(Z_EXTRA)
-            )
-        )
+        cutters.append(make_hex_prism_xy(pocket_center, nut_R, depth_val + offset_val))
+
+    if not cutters:
+        raise Exception("Failed to build nut pocket cutters.")
 
     cutters_compound = Part.makeCompound(cutters)
 
@@ -101,12 +103,18 @@ class NutPocketTaskPanel:
         self.depth.setDecimals(2)
         self.depth.setValue(2.5)
 
+        self.offset = QtWidgets.QDoubleSpinBox()
+        self.offset.setRange(0.0, 10.0)
+        self.offset.setDecimals(2)
+        self.offset.setValue(0.0)
+
         self.preview = QtWidgets.QCheckBox("Preview cutters only (no cut)")
 
         layout.addRow("Pocket side", self.side)
         layout.addRow("Nut AF (mm)", self.nut_af)
         layout.addRow("Nut clearance (mm)", self.clear)
         layout.addRow("Pocket depth (mm)", self.depth)
+        layout.addRow("Z offset/overcut (mm)", self.offset)
         layout.addRow("Preview cutters", self.preview)
 
     def accept(self):
@@ -116,6 +124,7 @@ class NutPocketTaskPanel:
             nut_clearance=self.clear.value(),
             pocket_depth=self.depth.value(),
             pocket_side=pocket_side,
+            pocket_offset=self.offset.value(),
             preview_cutters=self.preview.isChecked(),
         )
         Gui.Control.closeDialog()
