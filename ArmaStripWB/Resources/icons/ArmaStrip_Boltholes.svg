@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Bolt head (hex) -->
+  <polygon points="32,6 44,13 44,27 32,34 20,27 20,13"
+           fill="#ffffff" stroke="#000000" stroke-width="3"/>
+  <!-- Bolt shaft -->
+  <rect x="28" y="28" width="8" height="28" rx="3"
+        fill="#ffffff" stroke="#000000" stroke-width="3"/>
+  <!-- Thread hint -->
+  <path d="M28 34 L36 30 M28 40 L36 36 M28 46 L36 42 M28 52 L36 48"
+        stroke="#000000" stroke-width="2" stroke-linecap="round"/>
+</svg>

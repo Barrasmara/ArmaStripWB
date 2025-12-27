@@ -1,0 +1,239 @@
+import FreeCAD as App
+import FreeCADGui as Gui
+import Part
+import math
+
+# ---------------------------------------------------------
+# Defaults (can later be moved into a Task panel)
+# Clearances default to 0.0 as you requested.
+# ---------------------------------------------------------
+DEFAULTS = {
+    "MAKE_NUT_POCKETS": True,
+    "MAKE_BOLT_HOLES":  True,
+
+    # Nut pocket (M3)
+    "nut_af":        5.5,
+    "nut_clearance": 0.0,
+    "pocket_depth":  2.5,
+
+    # Bolt holes (M3)
+    "bolt_d_nominal": 3.2,
+    "bolt_clearance": 0.0,
+
+    # Teardrop settings
+    "PRINT_UP": App.Vector(0, 0, 1),
+    "TEARDROP_ARC_STEPS": 48,
+
+    # General
+    "Z_EXTRA":    1.0,
+    "CENTER_TOL": 0.1,
+}
+
+# ---------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------
+def _unit(v):
+    ln = v.Length
+    if ln < 1e-9:
+        return App.Vector(0, 0, 0)
+    return v.multiply(1.0 / ln)
+
+def _make_hex_prism_xy(center, R, depth, z_extra):
+    """Hex pocket cutter placed in XY, extruded +Z."""
+    pts = []
+    for k in range(6):
+        ang = math.radians(60 * k)
+        x = center.x + R * math.cos(ang)
+        y = center.y + R * math.sin(ang)
+        pts.append(App.Vector(x, y, center.z))
+    pts.append(pts[0])
+
+    wire = Part.makePolygon(pts)
+    face = Part.Face(wire)
+    return face.extrude(App.Vector(0, 0, depth + z_extra))
+
+def _teardrop_points_2d(r, steps):
+    """
+    Teardrop in 2D (U,V plane):
+      - circle arc from 135° to 405° (i.e. missing the 'top' cap)
+      - add a point at y = sqrt(2)*r to make ~45° printable slopes
+    """
+    pts = []
+    a0 = math.radians(135)
+    a1 = math.radians(405)  # 360 + 45
+    for i in range(steps + 1):
+        a = a0 + (a1 - a0) * (i / float(steps))
+        pts.append((r * math.cos(a), r * math.sin(a)))
+
+    tip_y = math.sqrt(2.0) * r
+    pts.append((0.0, tip_y))
+    pts.append(pts[0])
+    return pts
+
+def _make_teardrop_prism(center, axis, print_up, r, length, steps):
+    """
+    Builds a teardrop cutter whose profile plane is perpendicular to 'axis'.
+    Teardrop point oriented toward 'print_up' projected into the profile plane.
+    """
+    A = _unit(axis)
+    if A.Length < 1e-9:
+        raise Exception("Invalid hole axis")
+
+    # V = "up in the profile plane"
+    V = print_up.sub(A.multiply(print_up.dot(A)))
+    if V.Length < 1e-6:
+        # axis parallel to print_up; choose a stable alternate
+        tmp = App.Vector(1, 0, 0)
+        if abs(A.dot(tmp)) > 0.9:
+            tmp = App.Vector(0, 1, 0)
+        V = tmp.sub(A.multiply(tmp.dot(A)))
+    V = _unit(V)
+
+    # U completes right-handed basis
+    U = _unit(A.cross(V))
+    if U.Length < 1e-9:
+        raise Exception("Failed to build teardrop basis")
+
+    base_center = center.sub(A.multiply(length * 0.5))
+
+    pts2 = _teardrop_points_2d(r, steps)
+    pts3 = []
+    for (x, y) in pts2:
+        pts3.append(base_center.add(U.multiply(x)).add(V.multiply(y)))
+
+    wire = Part.makePolygon(pts3)
+    face = Part.Face(wire)
+    return face.extrude(A.multiply(length))
+
+# ---------------------------------------------------------
+# Main entry point called by commands.py
+# ---------------------------------------------------------
+def cut_fasteners_from_selection(
+    MAKE_NUT_POCKETS=None,
+    MAKE_BOLT_HOLES=None,
+    nut_af=None,
+    nut_clearance=None,
+    pocket_depth=None,
+    bolt_d_nominal=None,
+    bolt_clearance=None,
+    PRINT_UP=None,
+    TEARDROP_ARC_STEPS=None,
+    Z_EXTRA=None,
+    CENTER_TOL=None,
+):
+    """
+    Selection order:
+      1) target part/body (to cut)
+      2) strip object (with round holes)
+
+    Flat-strip assumption for now: hole axis = global +Z.
+    """
+
+    # Apply defaults
+    if MAKE_NUT_POCKETS is None: MAKE_NUT_POCKETS = DEFAULTS["MAKE_NUT_POCKETS"]
+    if MAKE_BOLT_HOLES  is None: MAKE_BOLT_HOLES  = DEFAULTS["MAKE_BOLT_HOLES"]
+    if nut_af           is None: nut_af           = DEFAULTS["nut_af"]
+    if nut_clearance    is None: nut_clearance    = DEFAULTS["nut_clearance"]
+    if pocket_depth     is None: pocket_depth     = DEFAULTS["pocket_depth"]
+    if bolt_d_nominal   is None: bolt_d_nominal   = DEFAULTS["bolt_d_nominal"]
+    if bolt_clearance   is None: bolt_clearance   = DEFAULTS["bolt_clearance"]
+    if PRINT_UP         is None: PRINT_UP         = DEFAULTS["PRINT_UP"]
+    if TEARDROP_ARC_STEPS is None: TEARDROP_ARC_STEPS = DEFAULTS["TEARDROP_ARC_STEPS"]
+    if Z_EXTRA          is None: Z_EXTRA          = DEFAULTS["Z_EXTRA"]
+    if CENTER_TOL       is None: CENTER_TOL       = DEFAULTS["CENTER_TOL"]
+
+    doc = App.ActiveDocument
+    if doc is None:
+        raise Exception("No active document")
+
+    sel = Gui.Selection.getSelection()
+    if len(sel) != 2:
+        raise Exception("Select FIRST the target part, THEN the Armastrip.")
+
+    part_obj  = sel[0]
+    strip_obj = sel[1]
+
+    part_shape  = part_obj.Shape
+    strip_shape = strip_obj.Shape
+
+    if part_shape.isNull() or strip_shape.isNull():
+        raise Exception("Selection contains invalid shapes.")
+
+    bb = part_shape.BoundBox
+    top_z = bb.ZMax
+    bot_z = bb.ZMin
+
+    # Derived sizes
+    nut_af_eff = float(nut_af) + float(nut_clearance)
+    nut_R = (nut_af_eff / 2.0) / math.cos(math.radians(30))
+
+    bolt_r = (float(bolt_d_nominal) + float(bolt_clearance)) / 2.0
+
+    # 1) Find circular edges in strip
+    circles = []
+    for e in strip_shape.Edges:
+        if hasattr(e, "Curve") and isinstance(e.Curve, Part.Circle):
+            circles.append((e.Curve.Center, e.Curve.Radius))
+
+    if not circles:
+        raise Exception("No circular holes found on the Armastrip.")
+
+    # 2) Merge top/bottom rims belonging to same hole (merge by XY)
+    holes = []  # list of (center, radius)
+    for ctr, rad in circles:
+        merged = False
+        for i, (c_prev, r_prev) in enumerate(holes):
+            dxy = (App.Vector(ctr.x, ctr.y, 0) - App.Vector(c_prev.x, c_prev.y, 0)).Length
+            if dxy <= float(CENTER_TOL):
+                holes[i] = (c_prev, min(r_prev, rad))
+                merged = True
+                break
+        if not merged:
+            holes.append((ctr, rad))
+
+    App.Console.PrintMessage(f"[Armstrip] Detected {len(holes)} hole centers.\n")
+
+    # 3) Build cutters
+    cutters = []
+
+    hole_axis = App.Vector(0, 0, 1)  # flat-mode assumption
+    bolt_len = (bb.ZLength + 2.0 * float(Z_EXTRA))
+
+    for ctr, _rad in holes:
+        x = ctr.x
+        y = ctr.y
+
+        if MAKE_NUT_POCKETS:
+            base_z = top_z - float(pocket_depth)
+            pocket_center = App.Vector(x, y, base_z)
+            cutters.append(_make_hex_prism_xy(pocket_center, nut_R, float(pocket_depth), float(Z_EXTRA)))
+
+        if MAKE_BOLT_HOLES:
+            mid_z = 0.5 * (top_z + bot_z)
+            hole_center = App.Vector(x, y, mid_z)
+            cutters.append(_make_teardrop_prism(
+                center=hole_center,
+                axis=hole_axis,
+                print_up=PRINT_UP,
+                r=bolt_r,
+                length=bolt_len,
+                steps=int(TEARDROP_ARC_STEPS)
+            ))
+
+    if not cutters:
+        raise Exception("No cutters were generated (check flags).")
+
+    cutters_compound = Part.makeCompound(cutters)
+
+    # 4) Cut
+    pocketed_shape = part_shape.cut(cutters_compound)
+
+    new_obj = doc.addObject("Part::Feature", part_obj.Name + "_ArmastripFasteners")
+    new_obj.Shape = pocketed_shape
+
+    doc.recompute()
+    Gui.ActiveDocument.ActiveView.viewAxonometric()
+    Gui.SendMsgToActiveView("ViewFit")
+
+    App.Console.PrintMessage(f"[Armstrip] Done. Created: {new_obj.Name}\n")
+    return new_obj

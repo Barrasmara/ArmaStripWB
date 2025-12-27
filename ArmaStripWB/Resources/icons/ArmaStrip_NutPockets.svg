@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Nut (hex) -->
+  <polygon points="32,8 48,18 48,38 32,48 16,38 16,18"
+           fill="#ffffff" stroke="#000000" stroke-width="3"/>
+  <!-- Hole -->
+  <circle cx="32" cy="28" r="8"
+          fill="#ffffff" stroke="#000000" stroke-width="3"/>
+</svg>

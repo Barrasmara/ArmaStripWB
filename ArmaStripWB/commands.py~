@@ -1,0 +1,36 @@
+# ArmstripWB/commands.py
+import FreeCADGui as Gui
+
+def register_commands():
+    Gui.addCommand("Armstrip_CreateStrip", CmdCreateStrip())
+    Gui.addCommand("Armstrip_NutPockets",  CmdNutPockets())
+
+class CmdCreateStrip:
+    def GetResources(self):
+        return {
+            "Pixmap": ":/ArmstripWB/icons/Armstrip_CreateStrip.svg",
+            "MenuText": "Create Armstrip (constant width)",
+            "ToolTip": "Create a constant-width strip with holes"
+        }
+
+    def IsActive(self):
+        return True
+
+    def Activated(self):
+        from ArmstripWB import strip_tools
+        strip_tools.create_strip_constant_width_gui()
+
+class CmdNutPockets:
+    def GetResources(self):
+        return {
+            "Pixmap": ":/ArmstripWB/icons/Armstrip_NutPockets.svg",
+            "MenuText": "Cut Nut Pockets / Bolt Holes",
+            "ToolTip": "Select part first, then strip. Cuts nut pockets and/or teardrop bolt holes."
+        }
+
+    def IsActive(self):
+        return Gui.ActiveDocument is not None
+
+    def Activated(self):
+        from ArmstripWB import pocket_tools
+        pocket_tools.cut_fasteners_from_selection()
