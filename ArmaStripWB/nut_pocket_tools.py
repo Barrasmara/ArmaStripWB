@@ -10,6 +10,7 @@ except Exception:
     QtWidgets = None
 
 from .common import (
+    filter_hole_centers,
     find_hole_centers_from_strip,
     get_selection_part_and_strip,
     make_hex_prism_xy,
@@ -23,6 +24,9 @@ def cut_nut_pockets_from_selection(
     pocket_side="top",  # "top" or "bottom"
     preview_cutters=False,
     pocket_offset=0.0,
+    hole_selection="all",
+    every_n=1,
+    start_hole=1,
     CENTER_TOL=0.1,
 ):
     part_obj, strip_obj = get_selection_part_and_strip()
@@ -36,6 +40,12 @@ def cut_nut_pockets_from_selection(
     nut_R = (nut_af_eff / 2.0) / math.cos(math.radians(30))
 
     centers = find_hole_centers_from_strip(strip_shape, center_tol=float(CENTER_TOL))
+    centers = filter_hole_centers(
+        centers,
+        selection_mode=hole_selection,
+        every_n=every_n,
+        start_index=start_hole,
+    )
 
     cutters = []
     depth_val = float(pocket_depth)
@@ -110,15 +120,41 @@ class NutPocketTaskPanel:
 
         self.preview = QtWidgets.QCheckBox("Preview cutters only (no cut)")
 
+        self.hole_mode = QtWidgets.QComboBox()
+        self.hole_mode.addItems([
+            "All holes",
+            "First and last",
+            "Every n holes (start at x)",
+        ])
+
+        self.every_n = QtWidgets.QSpinBox()
+        self.every_n.setRange(1, 999)
+        self.every_n.setValue(2)
+
+        self.start_hole = QtWidgets.QSpinBox()
+        self.start_hole.setRange(1, 999)
+        self.start_hole.setValue(1)
+
+        self.hole_mode.currentIndexChanged.connect(self._update_selection_enabled)
+        self._update_selection_enabled()
+
         layout.addRow("Pocket side", self.side)
         layout.addRow("Nut AF (mm)", self.nut_af)
         layout.addRow("Nut clearance (mm)", self.clear)
         layout.addRow("Pocket depth (mm)", self.depth)
         layout.addRow("Z offset/overcut (mm)", self.offset)
+        layout.addRow("Hole selection", self.hole_mode)
+        layout.addRow("Every n holes", self.every_n)
+        layout.addRow("Start at hole x", self.start_hole)
         layout.addRow("Preview cutters", self.preview)
 
     def accept(self):
         pocket_side = "top" if self.side.currentIndex() == 0 else "bottom"
+        selection_mode = "all"
+        if self.hole_mode.currentIndex() == 1:
+            selection_mode = "ends"
+        elif self.hole_mode.currentIndex() == 2:
+            selection_mode = "step"
         cut_nut_pockets_from_selection(
             nut_af=self.nut_af.value(),
             nut_clearance=self.clear.value(),
@@ -126,6 +162,9 @@ class NutPocketTaskPanel:
             pocket_side=pocket_side,
             pocket_offset=self.offset.value(),
             preview_cutters=self.preview.isChecked(),
+            hole_selection=selection_mode,
+            every_n=self.every_n.value(),
+            start_hole=self.start_hole.value(),
         )
         Gui.Control.closeDialog()
 
@@ -134,6 +173,11 @@ class NutPocketTaskPanel:
 
     def getStandardButtons(self):
         return int(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+
+    def _update_selection_enabled(self):
+        enable_step = self.hole_mode.currentIndex() == 2
+        self.every_n.setEnabled(enable_step)
+        self.start_hole.setEnabled(enable_step)
 
 
 def cut_nut_pockets_gui():

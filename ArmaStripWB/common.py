@@ -48,8 +48,46 @@ def find_hole_centers_from_strip(strip_shape, center_tol=0.1):
         if not merged:
             holes.append((ctr, rad))
 
-    App.Console.PrintMessage(f"[ArmaStrip] Detected {len(holes)} hole centers.\n")
-    return [c for (c, _r) in holes]
+    centers = [c for (c, _r) in holes]
+    centers = sorted(centers, key=lambda v: (round(v.x, 6), round(v.y, 6), round(v.z, 6)))
+    App.Console.PrintMessage(f"[ArmaStrip] Detected {len(centers)} hole centers.\n")
+    return centers
+
+
+def filter_hole_centers(centers, selection_mode="all", every_n=1, start_index=1):
+    mode = selection_mode or "all"
+    total = len(centers)
+
+    if mode == "ends":
+        if total <= 1:
+            selected = centers
+        else:
+            selected = [centers[0], centers[-1]]
+    elif mode == "step":
+        step = int(every_n)
+        start = int(start_index)
+        if step < 1:
+            raise Exception("Every-N value must be >= 1.")
+        if start < 1:
+            raise Exception("Start hole index must be >= 1.")
+        if start > total:
+            raise Exception("Start hole index exceeds available holes.")
+        if start >= step:
+            raise Exception("Start hole index must be less than the Every-N value.")
+
+        selected = []
+        for idx, ctr in enumerate(centers, start=1):
+            if idx < start:
+                continue
+            if (idx - start) % step == 0:
+                selected.append(ctr)
+    else:
+        selected = centers
+
+    App.Console.PrintMessage(
+        f"[ArmaStrip] Using {len(selected)} of {total} detected hole centers (mode: {mode}).\n"
+    )
+    return selected
 
 
 def unit(v):

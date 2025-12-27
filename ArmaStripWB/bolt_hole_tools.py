@@ -9,6 +9,7 @@ except Exception:
     QtWidgets = None
 
 from .common import (
+    filter_hole_centers,
     find_hole_centers_from_strip,
     get_selection_part_and_strip,
     make_round_hole_cyl,
@@ -33,6 +34,9 @@ def cut_bolt_holes_from_selection(
     bolt_d_nominal=3.2,
     bolt_clearance=0.0,
     preview_cutters=False,
+    hole_selection="all",
+    every_n=1,
+    start_hole=1,
     Z_EXTRA=1.0,
     CENTER_TOL=0.1,
 ):
@@ -47,6 +51,12 @@ def cut_bolt_holes_from_selection(
     r = (float(bolt_d_nominal) + float(bolt_clearance)) / 2.0
 
     centers = find_hole_centers_from_strip(strip_shape, center_tol=float(CENTER_TOL))
+    centers = filter_hole_centers(
+        centers,
+        selection_mode=hole_selection,
+        every_n=every_n,
+        start_index=start_hole,
+    )
 
     cutters = []
     axis = Z_AXIS  # flat strip assumption for now
@@ -110,6 +120,24 @@ class BoltHoleTaskPanel:
 
         self.preview = QtWidgets.QCheckBox("Preview cutters only (no cut)")
 
+        self.hole_mode = QtWidgets.QComboBox()
+        self.hole_mode.addItems([
+            "All holes",
+            "First and last",
+            "Every n holes (start at x)",
+        ])
+
+        self.every_n = QtWidgets.QSpinBox()
+        self.every_n.setRange(1, 999)
+        self.every_n.setValue(2)
+
+        self.start_hole = QtWidgets.QSpinBox()
+        self.start_hole.setRange(1, 999)
+        self.start_hole.setValue(1)
+
+        self.hole_mode.currentIndexChanged.connect(self._update_selection_enabled)
+        self._update_selection_enabled()
+
         self.info = QtWidgets.QLabel(
             "After creating round holes, you can select them and apply"
             " teardrop shaping with the FusedFilamentDesign addon."
@@ -118,14 +146,25 @@ class BoltHoleTaskPanel:
 
         layout.addRow("Bolt diameter (mm)", self.bolt_d)
         layout.addRow("Clearance (mm)", self.clear)
+        layout.addRow("Hole selection", self.hole_mode)
+        layout.addRow("Every n holes", self.every_n)
+        layout.addRow("Start at hole x", self.start_hole)
         layout.addRow("Preview cutters", self.preview)
         layout.addRow(self.info)
 
     def accept(self):
+        selection_mode = "all"
+        if self.hole_mode.currentIndex() == 1:
+            selection_mode = "ends"
+        elif self.hole_mode.currentIndex() == 2:
+            selection_mode = "step"
         cut_bolt_holes_from_selection(
             bolt_d_nominal=self.bolt_d.value(),
             bolt_clearance=self.clear.value(),
             preview_cutters=self.preview.isChecked(),
+            hole_selection=selection_mode,
+            every_n=self.every_n.value(),
+            start_hole=self.start_hole.value(),
         )
         Gui.Control.closeDialog()
 
@@ -134,6 +173,11 @@ class BoltHoleTaskPanel:
 
     def getStandardButtons(self):
         return int(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+
+    def _update_selection_enabled(self):
+        enable_step = self.hole_mode.currentIndex() == 2
+        self.every_n.setEnabled(enable_step)
+        self.start_hole.setEnabled(enable_step)
 
 
 def cut_bolt_holes_gui():
