@@ -6,12 +6,12 @@ import FreeCADGui as Gui
 
 App.Console.PrintMessage("[ArmaStripWB] InitGui.py starting (ultra-safe)...\n")
 
+
 class ArmaStripWorkbench(Gui.Workbench):
     MenuText = "ArmaStrip"
-    ToolTip  = "Tools for creating ArmaStrip and generating fastener pockets"
+    ToolTip = "Tools for creating ArmaStrip and generating fastener pockets"
 
     def __init__(self):
-        # Compute icon path *inline* (no references to module globals/functions)
         icon_path = ""
         try:
             user_dir = App.getUserAppDataDir()
@@ -26,14 +26,16 @@ class ArmaStripWorkbench(Gui.Workbench):
             App.Console.PrintError("[ArmaStripWB] Icon path compute failed:\n")
             App.Console.PrintError(traceback.format_exc() + "\n")
 
-        # Set class Icon attribute
         self.__class__.Icon = icon_path
-        App.Console.PrintMessage(f"[ArmaStripWB] Workbench __init__: Icon='{icon_path}'\n")
+        App.Console.PrintMessage(
+            f"[ArmaStripWB] Workbench __init__: Icon='{icon_path}'\n"
+        )
 
     def Initialize(self):
         App.Console.PrintMessage("[ArmaStripWB] Workbench Initialize() start\n")
         try:
             from ArmaStripWB import commands
+
             App.Console.PrintMessage("[ArmaStripWB] Imported ArmaStripWB.commands OK\n")
             commands.register_commands()
             App.Console.PrintMessage("[ArmaStripWB] Registered commands OK\n")
@@ -42,15 +44,24 @@ class ArmaStripWorkbench(Gui.Workbench):
             App.Console.PrintError(traceback.format_exc() + "\n")
             return
 
-        self.appendToolbar("ArmaStrip", [
-            "ArmaStrip_CreateStrip",
-            "ArmaStrip_NutPockets",
-        ])
-        self.appendMenu("ArmaStrip", [
-            "ArmaStrip_CreateStrip",
-            "ArmaStrip_NutPockets",
-        ])
+        self.appendToolbar(
+            "ArmaStrip",
+            [
+                "ArmaStrip_CreateStrip",
+                "ArmaStrip_NutPockets",
+                "ArmaStrip_BoltHoles",
+            ],
+        )
+        self.appendMenu(
+            "ArmaStrip",
+            [
+                "ArmaStrip_CreateStrip",
+                "ArmaStrip_NutPockets",
+                "ArmaStrip_BoltHoles",
+            ],
+        )
         App.Console.PrintMessage("[ArmaStripWB] Workbench Initialize() complete\n")
+
 
 try:
     Gui.addWorkbench(ArmaStripWorkbench())
