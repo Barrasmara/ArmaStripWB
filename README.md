@@ -2,7 +2,7 @@
 
 A FreeCAD workbench for creating perforated metal ArmaStrip and generating:
 - hex nut pockets aligned to strip holes
-- bolt holes (round or teardrop)
+- bolt holes (round by default; apply teardrops afterwards with addons like FusedFilamentDesign)
 
 ## Install
 Copy (or clone) this folder into your FreeCAD Mod directory:
@@ -22,4 +22,5 @@ Restart FreeCAD, then select the **ArmaStrip** workbench.
 3. Model or import a target part; select the part/body first, then the ArmaStrip object.
 4. Start **Cut Nut Pockets** or **Cut Bolt Holes** from the toolbar/menu.
 5. Use the Task Panel fields to set dimensions, enable **Preview cutters** to inspect geometry,
-   then press **OK** to perform the cut.
+   then press **OK** to perform the cut. If you want teardrop holes, select the hole faces/edges
+   after creation and run the teardrop tool from the FusedFilamentDesign addon.

@@ -65,7 +65,7 @@ class CmdBoltHoles:
         return {
             "Pixmap": _icon("ArmaStrip_BoltHoles.svg"),
             "MenuText": "Cut Bolt Holes",
-            "ToolTip": "Select part/body first, then ArmaStrip. Cuts bolt holes (round or teardrop).",
+            "ToolTip": "Select part/body first, then ArmaStrip. Cuts round bolt holes.",
         }
 
     def IsActive(self):
