@@ -13,7 +13,7 @@ Restart FreeCAD, then select the **ArmaStrip** workbench.
 
 ## Usage
 1. Create an ArmaStrip
-2. Select the target part first, then the strip
+2. Select the target part/body first, then the strip
 3. Run **Cut Nut Pockets** or **Cut Bolt Holes**
 
 ## How to test in FreeCAD
@@ -22,5 +22,7 @@ Restart FreeCAD, then select the **ArmaStrip** workbench.
 3. Model or import a target part; select the part/body first, then the ArmaStrip object.
 4. Start **Cut Nut Pockets** or **Cut Bolt Holes** from the toolbar/menu.
 5. Use the Task Panel fields to set dimensions, enable **Preview cutters** to inspect geometry,
-   then press **OK** to perform the cut. If you want teardrop holes, select the hole faces/edges
-   after creation and run the teardrop tool from the FusedFilamentDesign addon.
+   then press **OK** to perform the cut. When the selected target is a Part Design Body (or a
+   feature inside one), the resulting holes are added to that Body so downstream tools like the
+   FusedFilamentDesign teardrop command stay enabled. If you want teardrop holes, select the hole
+   faces/edges after creation and run the teardrop tool from the addon.

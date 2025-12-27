@@ -8,9 +8,25 @@ try:
 except Exception:
     QtWidgets = None
 
-from .common import find_hole_centers_from_strip, get_selection_part_and_strip, make_round_hole_cyl
+from .common import (
+    find_hole_centers_from_strip,
+    get_selection_part_and_strip,
+    make_round_hole_cyl,
+)
 
 Z_AXIS = App.Vector(0, 0, 1)
+
+
+def _find_parent_body(obj):
+    if obj.TypeId == "PartDesign::Body":
+        return obj
+    getter = getattr(obj, "getParentGeoFeatureGroup", None)
+    if getter is None:
+        return None
+    parent = getter()
+    if parent and parent.TypeId == "PartDesign::Body":
+        return parent
+    return None
 
 
 def cut_bolt_holes_from_selection(
@@ -58,8 +74,16 @@ def cut_bolt_holes_from_selection(
         return preview_obj
 
     result = part_shape.cut(cutters_compound)
-    new_obj = doc.addObject("Part::Feature", part_obj.Name + "_BoltHoles")
-    new_obj.Shape = result
+
+    body = _find_parent_body(part_obj)
+    if body is not None:
+        new_obj = body.newObject("PartDesign::Feature", part_obj.Name + "_BoltHoles")
+        new_obj.Shape = result
+        body.Tip = new_obj
+    else:
+        new_obj = doc.addObject("Part::Feature", part_obj.Name + "_BoltHoles")
+        new_obj.Shape = result
+
     doc.recompute()
 
     Gui.ActiveDocument.ActiveView.viewAxonometric()
