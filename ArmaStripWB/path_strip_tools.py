@@ -1,4 +1,3 @@
-import math
 import FreeCAD as App
 import FreeCADGui as Gui
 import Part
@@ -10,15 +9,6 @@ def _unit(v):
     if ln < 1e-12:
         return App.Vector(0, 0, 0)
     return v.multiply(1.0 / ln)
-
-
-def _rotate_about_axis(vec, axis, angle_rad):
-    a = _unit(axis)
-    if a.Length < 1e-9:
-        return vec
-    c = math.cos(angle_rad)
-    s = math.sin(angle_rad)
-    return vec.multiply(c) + a.cross(vec).multiply(s) + a.multiply(a.dot(vec) * (1 - c))
 
 
 def _edge_point_tangent_at_u(edge, u):
@@ -61,84 +51,63 @@ def _wire_point_tangent_at_s(wire, s):
     return _edge_point_tangent_at_u(edge, u1)
 
 
-def _make_rect_profile(center, U, V, width, thickness):
-    U = _unit(U)
-    V = _unit(V)
-    w = float(width) * 0.5
-    t = float(thickness) * 0.5
+def _planar_normal_from_wire(wire, up_hint):
+    if up_hint.Length > 1e-9:
+        return _unit(up_hint)
 
-    p1 = center + U.multiply(-w) + V.multiply(-t)
-    p2 = center + U.multiply(+w) + V.multiply(-t)
-    p3 = center + U.multiply(+w) + V.multiply(+t)
-    p4 = center + U.multiply(-w) + V.multiply(+t)
-
-    wire = Part.makePolygon([p1, p2, p3, p4, p1])
-    return Part.Face(wire)
-
-
-def _initial_frame_from_up_hint(tangent, up_hint):
-    v0 = up_hint - tangent.multiply(up_hint.dot(tangent))
-    if v0.Length < 1e-6:
-        tmp = App.Vector(1, 0, 0)
-        if abs(tangent.dot(tmp)) > 0.9:
-            tmp = App.Vector(0, 1, 0)
-        v0 = tmp - tangent.multiply(tmp.dot(tangent))
-    V = _unit(v0)
-    U = _unit(tangent.cross(V))
-    return U, V
-
-
-def _build_frames(wire, steps, up_hint, total_twist_deg, include_end):
-    edges, lens, cum, length = _wire_edges_and_lengths(wire)
+    length = wire.Length
     if length <= 1e-9:
         raise Exception("Selected path has zero length.")
 
     p0, t0 = _wire_point_tangent_at_s(wire, 0.0)
-    U, V = _initial_frame_from_up_hint(t0, up_hint)
-    prev_t = t0
-    total_twist = math.radians(float(total_twist_deg))
-
-    frames = []
-    frame_count = steps + 1 if include_end else steps
-    for i in range(frame_count):
-        s = (length * i) / float(steps)
-        p, t = _wire_point_tangent_at_s(wire, s)
-
-        axis = prev_t.cross(t)
-        if axis.Length > 1e-9:
-            ang = math.atan2(axis.Length, prev_t.dot(t))
-            V = _rotate_about_axis(V, axis, ang)
-            U = _rotate_about_axis(U, axis, ang)
-
-        V = V - t.multiply(V.dot(t))
-        V = _unit(V)
-        U = _unit(t.cross(V))
-
-        if abs(total_twist) > 1e-12:
-            frac = s / max(length, 1e-9)
-            twist_here = total_twist * frac
-            Vt = _rotate_about_axis(V, t, twist_here)
-            Ut = _rotate_about_axis(U, t, twist_here)
-        else:
-            Vt, Ut = V, U
-
-        frames.append(
-            {
-                "s": s,
-                "point": p,
-                "tangent": t,
-                "U": Ut,
-                "V": Vt,
-            }
-        )
-
-        prev_t = t
-
-    return frames, length
+    p1, t1 = _wire_point_tangent_at_s(wire, min(length * 0.25, length))
+    n = t0.cross(t1)
+    if n.Length < 1e-9:
+        p2, t2 = _wire_point_tangent_at_s(wire, min(length * 0.5, length))
+        n = t0.cross(t2)
+    if n.Length < 1e-9:
+        raise Exception("Unable to determine a plane normal for the selected path.")
+    return _unit(n)
 
 
-def _nearest_frame(frames, s):
-    return min(frames, key=lambda f: abs(f["s"] - s))
+def _reversed_edges(edges):
+    reversed_edges = []
+    for edge in reversed(edges):
+        edge_copy = edge.copy()
+        edge_copy.reverse()
+        reversed_edges.append(edge_copy)
+    return reversed_edges
+
+
+def _build_strip_face_from_wire(wire, width):
+    offset = float(width) * 0.5
+    if offset <= 0:
+        raise ValueError("strip_width must be > 0")
+
+    offset_plus = wire.makeOffset2D(offset)
+    offset_minus = wire.makeOffset2D(-offset)
+
+    if wire.isClosed():
+        outline_edges = offset_plus.Edges + _reversed_edges(offset_minus.Edges)
+        outline = Part.Wire(outline_edges)
+        return Part.Face(outline)
+
+    plus_start = offset_plus.Vertexes[0].Point
+    plus_end = offset_plus.Vertexes[-1].Point
+    minus_start = offset_minus.Vertexes[0].Point
+    minus_end = offset_minus.Vertexes[-1].Point
+
+    cap_end = Part.makeLine(plus_end, minus_end)
+    cap_start = Part.makeLine(minus_start, plus_start)
+
+    outline_edges = (
+        offset_plus.Edges
+        + [cap_end]
+        + _reversed_edges(offset_minus.Edges)
+        + [cap_start]
+    )
+    outline = Part.Wire(outline_edges)
+    return Part.Face(outline)
 
 
 def create_strip_along_path(
@@ -149,9 +118,7 @@ def create_strip_along_path(
     n_holes=None,
     start_offset=0.0,
     fit_holes_to_path=True,
-    samples_per_pitch=6,
     up_hint=App.Vector(0, 0, 1),
-    total_twist_deg=0.0,
     name="ArmaStrip_Path",
     path_obj=None,
 ):
@@ -186,9 +153,6 @@ def create_strip_along_path(
         raise ValueError("strip_thickness must be > 0")
     if strip_width <= 0:
         raise ValueError("strip_width must be > 0")
-    if samples_per_pitch < 2:
-        raise ValueError("samples_per_pitch must be >= 2")
-
     _, _, _, length = _wire_edges_and_lengths(wire)
 
     if n_holes is None:
@@ -200,27 +164,18 @@ def create_strip_along_path(
     if is_closed and fit_holes_to_path:
         effective_pitch = length / float(hole_count)
 
-    approx_steps = max(
-        6,
-        int(math.ceil((length / max(effective_pitch, 1e-9)) * samples_per_pitch)),
-    )
-    steps = approx_steps
+    normal = _planar_normal_from_wire(wire, up_hint)
+    align_to_z = App.Rotation(normal, App.Vector(0, 0, 1))
+    to_z = App.Placement(App.Vector(0, 0, 0), align_to_z)
+    to_world = App.Placement(App.Vector(0, 0, 0), align_to_z.inverted())
 
-    frames, length = _build_frames(wire, steps, up_hint, total_twist_deg, not is_closed)
+    wire_local = wire.copy()
+    wire_local.transformShape(to_z.toMatrix())
 
-    faces = []
-    for frame in frames:
-        face = _make_rect_profile(
-            frame["point"],
-            frame["U"],
-            frame["V"],
-            strip_width,
-            strip_thickness,
-        )
-        faces.append(face)
+    face_local = _build_strip_face_from_wire(wire_local, strip_width)
+    face_local.transformShape(to_world.toMatrix())
 
-    loft = Part.makeLoft([f.OuterWire for f in faces], True, False)
-    solid = loft
+    solid = face_local.extrude(normal.multiply(float(strip_thickness)))
 
     hole_radius = float(hole_d) * 0.5
     hole_length = float(strip_thickness) + 2.0
@@ -235,9 +190,8 @@ def create_strip_along_path(
         elif s < 0.0 or s > length:
             continue
 
-        frame = _nearest_frame(frames, s)
-        center = frame["point"]
-        axis = frame["V"]
+        center, _tangent = _wire_point_tangent_at_s(wire, s)
+        axis = normal
 
         base = center - axis.multiply(hole_length * 0.5)
         cyl = Part.makeCylinder(hole_radius, hole_length, base, axis)
@@ -270,9 +224,6 @@ def create_strip_along_path(
         obj.addProperty(
             "App::PropertyFloat", "StartOffset", "Armstrip", "hole start offset"
         ).StartOffset = float(start_offset)
-        obj.addProperty(
-            "App::PropertyFloat", "TotalTwist", "Armstrip", "total twist degrees"
-        ).TotalTwist = float(total_twist_deg)
         obj.addProperty(
             "App::PropertyBool", "FitHolesToPath", "Armstrip", "fit holes to path"
         ).FitHolesToPath = bool(fit_holes_to_path)
@@ -339,16 +290,6 @@ def create_strip_along_path_gui():
     start_offset.setDecimals(2)
     start_offset.setValue(0.0)
 
-    twist_deg = QtWidgets.QDoubleSpinBox()
-    twist_deg.setRange(-720.0, 720.0)
-    twist_deg.setDecimals(1)
-    twist_deg.setValue(0.0)
-
-    samples_per_pitch = QtWidgets.QSpinBox()
-    samples_per_pitch.setRange(2, 50)
-    samples_per_pitch.setValue(6)
-    samples_per_pitch.setToolTip("Number of loft sections per hole pitch (higher = smoother).")
-
     layout.addRow("Strip width", strip_width)
     layout.addRow("Strip thickness", strip_thickness)
     layout.addRow("Hole diameter", hole_d)
@@ -356,8 +297,6 @@ def create_strip_along_path_gui():
     layout.addRow("Hole count (0 = auto)", hole_count)
     layout.addRow("", fit_to_path)
     layout.addRow("Start offset", start_offset)
-    layout.addRow("Total twist (deg)", twist_deg)
-    layout.addRow("Samples per pitch", samples_per_pitch)
 
     btns = QtWidgets.QDialogButtonBox(
         QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
@@ -388,7 +327,5 @@ def create_strip_along_path_gui():
         n_holes=None if count == 0 else count,
         start_offset=start_offset.value(),
         fit_holes_to_path=fit_to_path.isChecked(),
-        samples_per_pitch=samples_per_pitch.value(),
-        total_twist_deg=twist_deg.value(),
         path_obj=selected[0],
     )
