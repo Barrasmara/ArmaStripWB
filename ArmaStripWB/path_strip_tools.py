@@ -79,17 +79,33 @@ def _reversed_edges(edges):
     return reversed_edges
 
 
+def _wire_from_offset_shape(shape, label):
+    if hasattr(shape, "Wires") and shape.Wires:
+        if len(shape.Wires) > 1:
+            raise Exception(f"Offset for {label} produced multiple wires.")
+        return shape.Wires[0]
+    if hasattr(shape, "Edges") and shape.Edges:
+        sorted_edges = Part.sortEdges(shape.Edges)
+        if not sorted_edges:
+            raise Exception(f"Offset for {label} produced no edges.")
+        return Part.Wire(sorted_edges[0])
+    raise Exception(f"Offset for {label} produced no wire.")
+
+
 def _build_strip_face_from_wire(wire, width):
     offset = float(width) * 0.5
     if offset <= 0:
         raise ValueError("strip_width must be > 0")
 
-    offset_plus = wire.makeOffset2D(offset)
-    offset_minus = wire.makeOffset2D(-offset)
+    offset_plus = _wire_from_offset_shape(wire.makeOffset2D(offset), "positive")
+    offset_minus = _wire_from_offset_shape(wire.makeOffset2D(-offset), "negative")
 
     if wire.isClosed():
         outline_edges = offset_plus.Edges + _reversed_edges(offset_minus.Edges)
-        outline = Part.Wire(outline_edges)
+        sorted_edges = Part.sortEdges(outline_edges)
+        if not sorted_edges:
+            raise Exception("Unable to build closed strip outline.")
+        outline = Part.Wire(sorted_edges[0])
         return Part.Face(outline)
 
     plus_start = offset_plus.Vertexes[0].Point
@@ -106,7 +122,10 @@ def _build_strip_face_from_wire(wire, width):
         + _reversed_edges(offset_minus.Edges)
         + [cap_start]
     )
-    outline = Part.Wire(outline_edges)
+    sorted_edges = Part.sortEdges(outline_edges)
+    if not sorted_edges:
+        raise Exception("Unable to build open strip outline.")
+    outline = Part.Wire(sorted_edges[0])
     return Part.Face(outline)
 
 
