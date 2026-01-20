@@ -92,34 +92,38 @@ def _wire_from_offset_shape(shape, label):
     raise Exception(f"Offset for {label} produced no wire.")
 
 
-def _build_strip_face_from_wire(wire, width):
-    offset = float(width) * 0.5
+def _wire_bbox_size(wire):
+    return wire.BoundBox.DiagonalLength
+
+
+def _build_strip_face_from_edge_wire(wire, width, offset_dir):
+    offset = float(width)
     if offset <= 0:
         raise ValueError("strip_width must be > 0")
 
-    offset_plus = _wire_from_offset_shape(wire.makeOffset2D(offset), "positive")
-    offset_minus = _wire_from_offset_shape(wire.makeOffset2D(-offset), "negative")
+    offset_wire = _wire_from_offset_shape(
+        wire.makeOffset2D(offset * float(offset_dir)), "offset"
+    )
 
     if wire.isClosed():
-        outline_edges = offset_plus.Edges + _reversed_edges(offset_minus.Edges)
-        sorted_edges = Part.sortEdges(outline_edges)
-        if not sorted_edges:
-            raise Exception("Unable to build closed strip outline.")
-        outline = Part.Wire(sorted_edges[0])
-        return Part.Face(outline)
+        outer = offset_wire
+        inner = wire
+        if _wire_bbox_size(inner) > _wire_bbox_size(outer):
+            outer, inner = inner, outer
+        return Part.Face(outer, [inner])
 
-    plus_start = offset_plus.Vertexes[0].Point
-    plus_end = offset_plus.Vertexes[-1].Point
-    minus_start = offset_minus.Vertexes[0].Point
-    minus_end = offset_minus.Vertexes[-1].Point
+    offset_start = offset_wire.Vertexes[0].Point
+    offset_end = offset_wire.Vertexes[-1].Point
+    base_start = wire.Vertexes[0].Point
+    base_end = wire.Vertexes[-1].Point
 
-    cap_end = Part.makeLine(plus_end, minus_end)
-    cap_start = Part.makeLine(minus_start, plus_start)
+    cap_end = Part.makeLine(offset_end, base_end)
+    cap_start = Part.makeLine(base_start, offset_start)
 
     outline_edges = (
-        offset_plus.Edges
+        offset_wire.Edges
         + [cap_end]
-        + _reversed_edges(offset_minus.Edges)
+        + _reversed_edges(wire.Edges)
         + [cap_start]
     )
     sorted_edges = Part.sortEdges(outline_edges)
@@ -138,6 +142,7 @@ def create_strip_along_path(
     start_offset=0.0,
     fit_holes_to_path=True,
     up_hint=App.Vector(0, 0, 1),
+    offset_dir=1,
     name="ArmaStrip_Path",
     path_obj=None,
 ):
@@ -172,6 +177,8 @@ def create_strip_along_path(
         raise ValueError("strip_thickness must be > 0")
     if strip_width <= 0:
         raise ValueError("strip_width must be > 0")
+    if offset_dir not in (-1, 1):
+        raise ValueError("offset_dir must be -1 or 1")
     _, _, _, length = _wire_edges_and_lengths(wire)
 
     if n_holes is None:
@@ -191,7 +198,7 @@ def create_strip_along_path(
     wire_local = wire.copy()
     wire_local.transformShape(to_z.toMatrix())
 
-    face_local = _build_strip_face_from_wire(wire_local, strip_width)
+    face_local = _build_strip_face_from_edge_wire(wire_local, strip_width, offset_dir)
     face_local.transformShape(to_world.toMatrix())
 
     solid = face_local.extrude(normal.multiply(float(strip_thickness)))
@@ -209,7 +216,10 @@ def create_strip_along_path(
         elif s < 0.0 or s > length:
             continue
 
-        center, _tangent = _wire_point_tangent_at_s(wire, s)
+        center, tangent = _wire_point_tangent_at_s(wire, s)
+        lateral = normal.cross(tangent)
+        lateral = _unit(lateral)
+        center = center + lateral.multiply(float(strip_width) * 0.5 * float(offset_dir))
         axis = normal
 
         base = center - axis.multiply(hole_length * 0.5)
@@ -246,6 +256,9 @@ def create_strip_along_path(
         obj.addProperty(
             "App::PropertyBool", "FitHolesToPath", "Armstrip", "fit holes to path"
         ).FitHolesToPath = bool(fit_holes_to_path)
+        obj.addProperty(
+            "App::PropertyInteger", "OffsetDir", "Armstrip", "offset side (+/-1)"
+        ).OffsetDir = int(offset_dir)
         obj.addProperty(
             "App::PropertyVectorList",
             "HoleCenters",
@@ -309,6 +322,9 @@ def create_strip_along_path_gui():
     start_offset.setDecimals(2)
     start_offset.setValue(0.0)
 
+    flip_offset = QtWidgets.QCheckBox("Flip offset side")
+    flip_offset.setChecked(False)
+
     layout.addRow("Strip width", strip_width)
     layout.addRow("Strip thickness", strip_thickness)
     layout.addRow("Hole diameter", hole_d)
@@ -316,6 +332,7 @@ def create_strip_along_path_gui():
     layout.addRow("Hole count (0 = auto)", hole_count)
     layout.addRow("", fit_to_path)
     layout.addRow("Start offset", start_offset)
+    layout.addRow("", flip_offset)
 
     btns = QtWidgets.QDialogButtonBox(
         QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
@@ -346,5 +363,6 @@ def create_strip_along_path_gui():
         n_holes=None if count == 0 else count,
         start_offset=start_offset.value(),
         fit_holes_to_path=fit_to_path.isChecked(),
+        offset_dir=-1 if flip_offset.isChecked() else 1,
         path_obj=selected[0],
     )
