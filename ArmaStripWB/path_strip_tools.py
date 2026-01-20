@@ -52,9 +52,6 @@ def _wire_point_tangent_at_s(wire, s):
 
 
 def _planar_normal_from_wire(wire, up_hint):
-    if up_hint.Length > 1e-9:
-        return _unit(up_hint)
-
     length = wire.Length
     if length <= 1e-9:
         raise Exception("Selected path has zero length.")
@@ -67,7 +64,10 @@ def _planar_normal_from_wire(wire, up_hint):
         n = t0.cross(t2)
     if n.Length < 1e-9:
         raise Exception("Unable to determine a plane normal for the selected path.")
-    return _unit(n)
+    n = _unit(n)
+    if up_hint.Length > 1e-9 and n.dot(_unit(up_hint)) < 0:
+        n = n.multiply(-1)
+    return n
 
 
 def _reversed_edges(edges):
@@ -141,7 +141,7 @@ def create_strip_along_path(
     n_holes=None,
     start_offset=0.0,
     fit_holes_to_path=True,
-    up_hint=App.Vector(0, 0, 1),
+    up_hint=App.Vector(0, 0, 0),
     offset_dir=1,
     name="ArmaStrip_Path",
     path_obj=None,
