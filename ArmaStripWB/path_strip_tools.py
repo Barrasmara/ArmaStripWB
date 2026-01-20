@@ -88,7 +88,7 @@ def _initial_frame_from_up_hint(tangent, up_hint):
     return U, V
 
 
-def _build_frames(wire, steps, up_hint, total_twist_deg):
+def _build_frames(wire, steps, up_hint, total_twist_deg, include_end):
     edges, lens, cum, length = _wire_edges_and_lengths(wire)
     if length <= 1e-9:
         raise Exception("Selected path has zero length.")
@@ -99,7 +99,8 @@ def _build_frames(wire, steps, up_hint, total_twist_deg):
     total_twist = math.radians(float(total_twist_deg))
 
     frames = []
-    for i in range(steps + 1):
+    frame_count = steps + 1 if include_end else steps
+    for i in range(frame_count):
         s = (length * i) / float(steps)
         p, t = _wire_point_tangent_at_s(wire, s)
 
@@ -203,9 +204,9 @@ def create_strip_along_path(
         6,
         int(math.ceil((length / max(effective_pitch, 1e-9)) * samples_per_pitch)),
     )
-    steps = approx_steps + (1 if is_closed else 0)
+    steps = approx_steps
 
-    frames, length = _build_frames(wire, steps, up_hint, total_twist_deg)
+    frames, length = _build_frames(wire, steps, up_hint, total_twist_deg, not is_closed)
 
     faces = []
     for frame in frames:
@@ -346,6 +347,7 @@ def create_strip_along_path_gui():
     samples_per_pitch = QtWidgets.QSpinBox()
     samples_per_pitch.setRange(2, 50)
     samples_per_pitch.setValue(6)
+    samples_per_pitch.setToolTip("Number of loft sections per hole pitch (higher = smoother).")
 
     layout.addRow("Strip width", strip_width)
     layout.addRow("Strip thickness", strip_thickness)
