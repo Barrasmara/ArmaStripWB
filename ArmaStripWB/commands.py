@@ -22,6 +22,7 @@ def _icon(name):
 
 def register_commands():
     Gui.addCommand("ArmaStrip_CreateStrip", CmdCreateStrip())
+    Gui.addCommand("ArmaStrip_CreateStripPath", CmdCreateStripPath())
     Gui.addCommand("ArmaStrip_NutPockets", CmdNutPockets())
     Gui.addCommand("ArmaStrip_BoltHoles", CmdBoltHoles())
 
@@ -58,6 +59,23 @@ class CmdNutPockets:
         from ArmaStripWB import nut_pocket_tools
 
         nut_pocket_tools.cut_nut_pockets_gui()
+
+
+class CmdCreateStripPath:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon("ArmaStrip_CreateStrip.svg"),
+            "MenuText": "Create ArmaStrip Along Path",
+            "ToolTip": "Create an ArmaStrip swept along a selected path",
+        }
+
+    def IsActive(self):
+        return True
+
+    def Activated(self):
+        from ArmaStripWB import path_strip_tools
+
+        path_strip_tools.create_strip_along_path_gui()
 
 
 class CmdBoltHoles:
