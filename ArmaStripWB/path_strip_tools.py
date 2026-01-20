@@ -110,7 +110,7 @@ def _build_strip_face_from_edge_wire(wire, width, offset_dir):
         inner = wire
         if _wire_bbox_size(inner) > _wire_bbox_size(outer):
             outer, inner = inner, outer
-        return Part.Face(outer, [inner])
+        return Part.Face([outer, inner])
 
     offset_start = offset_wire.Vertexes[0].Point
     offset_end = offset_wire.Vertexes[-1].Point
