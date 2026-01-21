@@ -236,9 +236,15 @@ def create_strip_along_path(
     wire_local = wire.copy()
     wire_local.transformShape(to_z.toMatrix())
 
+    offset_wire_world = None
     if path_is_centerline:
         face_local = _build_strip_face_from_centerline_wire(wire_local, strip_thickness)
     else:
+        offset_wire_local = _wire_from_offset_shape(
+            wire_local.makeOffset2D(strip_thickness * float(offset_dir)), "offset"
+        )
+        offset_wire_world = offset_wire_local.copy()
+        offset_wire_world.transformShape(to_world.toMatrix())
         face_local = _build_strip_face_from_edge_wire(
             wire_local, strip_thickness, offset_dir
         )
@@ -263,10 +269,18 @@ def create_strip_along_path(
             continue
 
         center, tangent = _wire_point_tangent_at_s(wire, s)
-        thickness_dir = _unit(tangent.cross(width_dir))
-        thickness_dir = thickness_dir.multiply(float(offset_dir))
-        if not path_is_centerline:
-            center = center + thickness_dir.multiply(float(strip_thickness) * 0.5)
+        if path_is_centerline:
+            thickness_dir = _unit(tangent.cross(width_dir))
+        else:
+            offset_len = offset_wire_world.Length if offset_wire_world else 0.0
+            if offset_len > 1e-9:
+                s_offset = (s / length) * offset_len
+                offset_point, _ = _wire_point_tangent_at_s(offset_wire_world, s_offset)
+                thickness_dir = _unit(offset_point.sub(center))
+                center = center.add(offset_point).multiply(0.5)
+            else:
+                thickness_dir = _unit(tangent.cross(width_dir)).multiply(float(offset_dir))
+                center = center + thickness_dir.multiply(float(strip_thickness) * 0.5)
         center = center + width_dir.multiply(float(strip_width) * 0.5)
         axis = thickness_dir
 
