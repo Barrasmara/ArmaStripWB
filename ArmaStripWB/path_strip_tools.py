@@ -273,7 +273,7 @@ def create_strip_along_path(
         profile_wire = Part.makePolygon([p1, p2, p3, p4, p1])
         profile_face = Part.Face(profile_wire)
         try:
-            base_solid = wire.makePipeShell([profile_wire], True, True)
+            base_solid = wire.makePipeShell([profile_wire], True, False)
         except Exception:
             base_solid = None
 
@@ -297,8 +297,11 @@ def create_strip_along_path(
             continue
 
         center, tangent = _wire_point_tangent_at_s(wire, s)
-        if path_is_centerline:
+        if use_sweep or path_is_centerline:
             thickness_dir = _unit(tangent.cross(width_dir))
+            if not path_is_centerline:
+                thickness_dir = thickness_dir.multiply(float(offset_dir))
+                center = center + thickness_dir.multiply(float(strip_thickness) * 0.5)
         else:
             offset_len = offset_wire_world.Length if offset_wire_world else 0.0
             if offset_len > 1e-9:
