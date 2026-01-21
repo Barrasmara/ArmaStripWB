@@ -13,7 +13,7 @@ Restart FreeCAD, then select the **ArmaStrip** workbench.
 
 ## Usage
 1. Create an ArmaStrip
-2. (Optional) Create an ArmaStrip along a selected planar path (edge/wire/sketch) for curved or closed-loop strips; use **Path is strip centerline** to keep the sketch on the centerline, or **Flip offset side** to swap the edge growth direction
+2. (Optional) Create an ArmaStrip along a selected planar path (edge/wire/sketch) for curved or closed-loop strips; by default the path is the long edge, use **Path is strip centerline** to center the ribbon, or **Flip offset side** to swap the edge growth direction
 3. Select the target part/body first, then the strip
 4. Run **Cut Nut Pockets** or **Cut Bolt Holes**
 

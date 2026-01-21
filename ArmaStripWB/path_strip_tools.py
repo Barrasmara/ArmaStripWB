@@ -96,10 +96,10 @@ def _wire_bbox_size(wire):
     return wire.BoundBox.DiagonalLength
 
 
-def _build_strip_face_from_edge_wire(wire, width, offset_dir):
-    offset = float(width)
+def _build_strip_face_from_edge_wire(wire, thickness, offset_dir):
+    offset = float(thickness)
     if offset <= 0:
-        raise ValueError("strip_width must be > 0")
+        raise ValueError("strip_thickness must be > 0")
 
     offset_wire = _wire_from_offset_shape(
         wire.makeOffset2D(offset * float(offset_dir)), "offset"
@@ -133,10 +133,10 @@ def _build_strip_face_from_edge_wire(wire, width, offset_dir):
     return Part.Face(outline)
 
 
-def _build_strip_face_from_centerline_wire(wire, width):
-    offset = float(width) * 0.5
+def _build_strip_face_from_centerline_wire(wire, thickness):
+    offset = float(thickness) * 0.5
     if offset <= 0:
-        raise ValueError("strip_width must be > 0")
+        raise ValueError("strip_thickness must be > 0")
 
     offset_plus = _wire_from_offset_shape(wire.makeOffset2D(offset), "positive")
     offset_minus = _wire_from_offset_shape(wire.makeOffset2D(-offset), "negative")
@@ -178,7 +178,8 @@ def create_strip_along_path(
     fit_holes_to_path=True,
     up_hint=App.Vector(0, 0, 0),
     offset_dir=1,
-    path_is_centerline=True,
+    path_is_centerline=False,
+    keep_history=False,
     name="ArmaStrip_Path",
     path_obj=None,
 ):
@@ -227,7 +228,8 @@ def create_strip_along_path(
         effective_pitch = length / float(hole_count)
 
     normal = _planar_normal_from_wire(wire, up_hint)
-    align_to_z = App.Rotation(normal, App.Vector(0, 0, 1))
+    width_dir = normal
+    align_to_z = App.Rotation(width_dir, App.Vector(0, 0, 1))
     to_z = App.Placement(App.Vector(0, 0, 0), align_to_z)
     to_world = App.Placement(App.Vector(0, 0, 0), align_to_z.inverted())
 
@@ -235,14 +237,14 @@ def create_strip_along_path(
     wire_local.transformShape(to_z.toMatrix())
 
     if path_is_centerline:
-        face_local = _build_strip_face_from_centerline_wire(wire_local, strip_width)
+        face_local = _build_strip_face_from_centerline_wire(wire_local, strip_thickness)
     else:
         face_local = _build_strip_face_from_edge_wire(
-            wire_local, strip_width, offset_dir
+            wire_local, strip_thickness, offset_dir
         )
     face_local.transformShape(to_world.toMatrix())
 
-    solid = face_local.extrude(normal.multiply(float(strip_thickness)))
+    solid = face_local.extrude(width_dir.multiply(float(strip_width)))
 
     hole_radius = float(hole_d) * 0.5
     hole_length = float(strip_thickness) + 2.0
@@ -258,13 +260,12 @@ def create_strip_along_path(
             continue
 
         center, tangent = _wire_point_tangent_at_s(wire, s)
+        thickness_dir = _unit(tangent.cross(width_dir))
+        thickness_dir = thickness_dir.multiply(float(offset_dir))
         if not path_is_centerline:
-            lateral = normal.cross(tangent)
-            lateral = _unit(lateral)
-            center = center + lateral.multiply(
-                float(strip_width) * 0.5 * float(offset_dir)
-            )
-        axis = normal
+            center = center + thickness_dir.multiply(float(strip_thickness) * 0.5)
+        center = center + width_dir.multiply(float(strip_width) * 0.5)
+        axis = thickness_dir
 
         base = center - axis.multiply(hole_length * 0.5)
         cyl = Part.makeCylinder(hole_radius, hole_length, base, axis)
@@ -272,8 +273,18 @@ def create_strip_along_path(
         hole_centers.append(center)
         hole_axes.append(axis)
 
-    if cutters:
-        solid = solid.cut(Part.makeCompound(cutters))
+    cutters_compound = Part.makeCompound(cutters) if cutters else None
+    if cutters_compound:
+        solid = solid.cut(cutters_compound)
+
+    if keep_history:
+        profile_obj = doc.addObject("Part::Feature", f"{name}_Profile")
+        profile_obj.Shape = face_local
+        base_obj = doc.addObject("Part::Feature", f"{name}_Base")
+        base_obj.Shape = face_local.extrude(width_dir.multiply(float(strip_width)))
+        if cutters_compound:
+            cutters_obj = doc.addObject("Part::Feature", f"{name}_Cutters")
+            cutters_obj.Shape = cutters_compound
 
     obj = doc.addObject("Part::Feature", name)
     obj.Shape = solid
@@ -309,6 +320,12 @@ def create_strip_along_path(
             "Armstrip",
             "path is strip centerline",
         ).PathIsCenterline = bool(path_is_centerline)
+        obj.addProperty(
+            "App::PropertyBool",
+            "KeepHistory",
+            "Armstrip",
+            "keep construction history",
+        ).KeepHistory = bool(keep_history)
         obj.addProperty(
             "App::PropertyVectorList",
             "HoleCenters",
@@ -376,7 +393,10 @@ def create_strip_along_path_gui():
     flip_offset.setChecked(False)
 
     path_is_centerline = QtWidgets.QCheckBox("Path is strip centerline")
-    path_is_centerline.setChecked(True)
+    path_is_centerline.setChecked(False)
+
+    keep_history = QtWidgets.QCheckBox("Keep construction history")
+    keep_history.setChecked(False)
 
     layout.addRow("Strip width", strip_width)
     layout.addRow("Strip thickness", strip_thickness)
@@ -387,6 +407,7 @@ def create_strip_along_path_gui():
     layout.addRow("Start offset", start_offset)
     layout.addRow("", flip_offset)
     layout.addRow("", path_is_centerline)
+    layout.addRow("", keep_history)
 
     btns = QtWidgets.QDialogButtonBox(
         QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
@@ -419,5 +440,6 @@ def create_strip_along_path_gui():
         fit_holes_to_path=fit_to_path.isChecked(),
         offset_dir=-1 if flip_offset.isChecked() else 1,
         path_is_centerline=path_is_centerline.isChecked(),
+        keep_history=keep_history.isChecked(),
         path_obj=selected[0],
     )
