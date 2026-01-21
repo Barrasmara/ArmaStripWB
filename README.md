@@ -13,8 +13,9 @@ Restart FreeCAD, then select the **ArmaStrip** workbench.
 
 ## Usage
 1. Create an ArmaStrip
-2. Select the target part/body first, then the strip
-3. Run **Cut Nut Pockets** or **Cut Bolt Holes**
+2. (Optional) Create an ArmaStrip along a selected planar path (edge/wire/sketch) for curved or closed-loop strips; by default the path is the long edge, use **Path is strip centerline** to center the ribbon, **Flip offset side** to swap the edge growth direction, and **Use sweep along path** to bend a straight profile along the curve
+3. Select the target part/body first, then the strip
+4. Run **Cut Nut Pockets** or **Cut Bolt Holes**
 
 Both fastener tools let you operate on all strip holes, only the first and last hole, or
 every _n_ holes starting at a chosen index (handy when you only need fixtures at intervals).

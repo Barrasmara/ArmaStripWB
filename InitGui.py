@@ -48,6 +48,7 @@ class ArmaStripWorkbench(Gui.Workbench):
             "ArmaStrip",
             [
                 "ArmaStrip_CreateStrip",
+                "ArmaStrip_CreateStripPath",
                 "ArmaStrip_NutPockets",
                 "ArmaStrip_BoltHoles",
             ],
@@ -56,6 +57,7 @@ class ArmaStripWorkbench(Gui.Workbench):
             "ArmaStrip",
             [
                 "ArmaStrip_CreateStrip",
+                "ArmaStrip_CreateStripPath",
                 "ArmaStrip_NutPockets",
                 "ArmaStrip_BoltHoles",
             ],
