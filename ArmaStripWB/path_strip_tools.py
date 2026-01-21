@@ -180,6 +180,7 @@ def create_strip_along_path(
     offset_dir=1,
     path_is_centerline=False,
     keep_history=False,
+    use_sweep=True,
     name="ArmaStrip_Path",
     path_obj=None,
 ):
@@ -250,7 +251,34 @@ def create_strip_along_path(
         )
     face_local.transformShape(to_world.toMatrix())
 
-    base_solid = face_local.extrude(width_dir.multiply(float(strip_width)))
+    base_solid = None
+    profile_face = None
+    if use_sweep:
+        p0, t0 = _wire_point_tangent_at_s(wire, 0.0)
+        thickness_dir = _unit(t0.cross(width_dir)).multiply(float(offset_dir))
+        width_vec = width_dir.multiply(float(strip_width))
+        if path_is_centerline:
+            thickness_vec = thickness_dir.multiply(float(strip_thickness) * 0.5)
+            p_a = p0 - thickness_vec
+            p_b = p0 + thickness_vec
+        else:
+            thickness_vec = thickness_dir.multiply(float(strip_thickness))
+            p_a = p0
+            p_b = p0 + thickness_vec
+
+        p1 = p_a
+        p2 = p_a + width_vec
+        p3 = p_b + width_vec
+        p4 = p_b
+        profile_wire = Part.makePolygon([p1, p2, p3, p4, p1])
+        profile_face = Part.Face(profile_wire)
+        try:
+            base_solid = wire.makePipeShell([profile_wire], True, True)
+        except Exception:
+            base_solid = None
+
+    if base_solid is None:
+        base_solid = face_local.extrude(width_dir.multiply(float(strip_width)))
     if base_solid.isNull():
         raise Exception("Failed to build strip solid from the selected path.")
     solid = base_solid
@@ -300,12 +328,15 @@ def create_strip_along_path(
 
     if keep_history:
         profile_obj = doc.addObject("Part::Feature", f"{name}_Profile")
-        profile_obj.Shape = face_local
+        profile_obj.Shape = profile_face if profile_face is not None else face_local
         base_obj = doc.addObject("Part::Feature", f"{name}_Base")
         base_obj.Shape = base_solid
         if cutters_compound:
             cutters_obj = doc.addObject("Part::Feature", f"{name}_Cutters")
             cutters_obj.Shape = cutters_compound
+        if use_sweep:
+            spine_obj = doc.addObject("Part::Feature", f"{name}_Spine")
+            spine_obj.Shape = wire
 
     obj = doc.addObject("Part::Feature", name)
     obj.Shape = solid
@@ -347,6 +378,12 @@ def create_strip_along_path(
             "Armstrip",
             "keep construction history",
         ).KeepHistory = bool(keep_history)
+        obj.addProperty(
+            "App::PropertyBool",
+            "UseSweep",
+            "Armstrip",
+            "use sweep to follow path",
+        ).UseSweep = bool(use_sweep)
         obj.addProperty(
             "App::PropertyVectorList",
             "HoleCenters",
@@ -419,6 +456,9 @@ def create_strip_along_path_gui():
     keep_history = QtWidgets.QCheckBox("Keep construction history")
     keep_history.setChecked(False)
 
+    use_sweep = QtWidgets.QCheckBox("Use sweep along path")
+    use_sweep.setChecked(True)
+
     layout.addRow("Strip width", strip_width)
     layout.addRow("Strip thickness", strip_thickness)
     layout.addRow("Hole diameter", hole_d)
@@ -429,6 +469,7 @@ def create_strip_along_path_gui():
     layout.addRow("", flip_offset)
     layout.addRow("", path_is_centerline)
     layout.addRow("", keep_history)
+    layout.addRow("", use_sweep)
 
     btns = QtWidgets.QDialogButtonBox(
         QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
@@ -462,5 +503,6 @@ def create_strip_along_path_gui():
         offset_dir=-1 if flip_offset.isChecked() else 1,
         path_is_centerline=path_is_centerline.isChecked(),
         keep_history=keep_history.isChecked(),
+        use_sweep=use_sweep.isChecked(),
         path_obj=selected[0],
     )
