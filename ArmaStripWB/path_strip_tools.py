@@ -245,6 +245,8 @@ def create_strip_along_path(
     face_local.transformShape(to_world.toMatrix())
 
     solid = face_local.extrude(width_dir.multiply(float(strip_width)))
+    if solid.isNull():
+        raise Exception("Failed to build strip solid from the selected path.")
 
     hole_radius = float(hole_d) * 0.5
     hole_length = float(strip_thickness) + 2.0
@@ -275,7 +277,11 @@ def create_strip_along_path(
 
     cutters_compound = Part.makeCompound(cutters) if cutters else None
     if cutters_compound:
+        if solid.isNull():
+            raise Exception("Strip solid is null before cutting holes.")
         solid = solid.cut(cutters_compound)
+        if solid.isNull():
+            raise Exception("Cut operation resulted in a null shape.")
 
     if keep_history:
         profile_obj = doc.addObject("Part::Feature", f"{name}_Profile")
