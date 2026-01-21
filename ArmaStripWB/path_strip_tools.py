@@ -133,6 +133,41 @@ def _build_strip_face_from_edge_wire(wire, width, offset_dir):
     return Part.Face(outline)
 
 
+def _build_strip_face_from_centerline_wire(wire, width):
+    offset = float(width) * 0.5
+    if offset <= 0:
+        raise ValueError("strip_width must be > 0")
+
+    offset_plus = _wire_from_offset_shape(wire.makeOffset2D(offset), "positive")
+    offset_minus = _wire_from_offset_shape(wire.makeOffset2D(-offset), "negative")
+
+    if wire.isClosed():
+        outer = offset_plus
+        inner = offset_minus
+        if _wire_bbox_size(inner) > _wire_bbox_size(outer):
+            outer, inner = inner, outer
+        return Part.Face([outer, inner])
+
+    plus_start = offset_plus.Vertexes[0].Point
+    plus_end = offset_plus.Vertexes[-1].Point
+    minus_start = offset_minus.Vertexes[0].Point
+    minus_end = offset_minus.Vertexes[-1].Point
+
+    cap_end = Part.makeLine(plus_end, minus_end)
+    cap_start = Part.makeLine(minus_start, plus_start)
+
+    outline_edges = (
+        offset_plus.Edges
+        + [cap_end]
+        + _reversed_edges(offset_minus.Edges)
+        + [cap_start]
+    )
+    sorted_edges = Part.sortEdges(outline_edges)
+    if not sorted_edges:
+        raise Exception("Unable to build open strip outline.")
+    outline = Part.Wire(sorted_edges[0])
+    return Part.Face(outline)
+
 def create_strip_along_path(
     strip_width=12.0,
     strip_thickness=0.8,
@@ -143,6 +178,7 @@ def create_strip_along_path(
     fit_holes_to_path=True,
     up_hint=App.Vector(0, 0, 0),
     offset_dir=1,
+    path_is_centerline=True,
     name="ArmaStrip_Path",
     path_obj=None,
 ):
@@ -198,7 +234,12 @@ def create_strip_along_path(
     wire_local = wire.copy()
     wire_local.transformShape(to_z.toMatrix())
 
-    face_local = _build_strip_face_from_edge_wire(wire_local, strip_width, offset_dir)
+    if path_is_centerline:
+        face_local = _build_strip_face_from_centerline_wire(wire_local, strip_width)
+    else:
+        face_local = _build_strip_face_from_edge_wire(
+            wire_local, strip_width, offset_dir
+        )
     face_local.transformShape(to_world.toMatrix())
 
     solid = face_local.extrude(normal.multiply(float(strip_thickness)))
@@ -217,9 +258,12 @@ def create_strip_along_path(
             continue
 
         center, tangent = _wire_point_tangent_at_s(wire, s)
-        lateral = normal.cross(tangent)
-        lateral = _unit(lateral)
-        center = center + lateral.multiply(float(strip_width) * 0.5 * float(offset_dir))
+        if not path_is_centerline:
+            lateral = normal.cross(tangent)
+            lateral = _unit(lateral)
+            center = center + lateral.multiply(
+                float(strip_width) * 0.5 * float(offset_dir)
+            )
         axis = normal
 
         base = center - axis.multiply(hole_length * 0.5)
@@ -259,6 +303,12 @@ def create_strip_along_path(
         obj.addProperty(
             "App::PropertyInteger", "OffsetDir", "Armstrip", "offset side (+/-1)"
         ).OffsetDir = int(offset_dir)
+        obj.addProperty(
+            "App::PropertyBool",
+            "PathIsCenterline",
+            "Armstrip",
+            "path is strip centerline",
+        ).PathIsCenterline = bool(path_is_centerline)
         obj.addProperty(
             "App::PropertyVectorList",
             "HoleCenters",
@@ -325,6 +375,9 @@ def create_strip_along_path_gui():
     flip_offset = QtWidgets.QCheckBox("Flip offset side")
     flip_offset.setChecked(False)
 
+    path_is_centerline = QtWidgets.QCheckBox("Path is strip centerline")
+    path_is_centerline.setChecked(True)
+
     layout.addRow("Strip width", strip_width)
     layout.addRow("Strip thickness", strip_thickness)
     layout.addRow("Hole diameter", hole_d)
@@ -333,6 +386,7 @@ def create_strip_along_path_gui():
     layout.addRow("", fit_to_path)
     layout.addRow("Start offset", start_offset)
     layout.addRow("", flip_offset)
+    layout.addRow("", path_is_centerline)
 
     btns = QtWidgets.QDialogButtonBox(
         QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
@@ -364,5 +418,6 @@ def create_strip_along_path_gui():
         start_offset=start_offset.value(),
         fit_holes_to_path=fit_to_path.isChecked(),
         offset_dir=-1 if flip_offset.isChecked() else 1,
+        path_is_centerline=path_is_centerline.isChecked(),
         path_obj=selected[0],
     )
